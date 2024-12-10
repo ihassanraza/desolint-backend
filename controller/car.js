@@ -1,5 +1,6 @@
 const dotenv = require("dotenv");
 const cloudinary = require('cloudinary');
+const jwt = require('jsonwebtoken');
 const Car = require('../models/Car');
 
 dotenv.config();
@@ -10,8 +11,18 @@ cloudinary.config({
 });
 
 const createCar = async (req, res) => {
-    const { model, price, phone, city, images, user } = req.body;
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+            success: false,
+            msg: 'Unauthorized. Token missing or invalid.',
+        });
+    }
 
+    const token = authHeader.split(' ')[1];
+
+    const { model, price, phone, city, images } = req.body;
+    
     if (!images || images.length === 0 || images.length > 10) {
         return res.status(400).json({
             success: false,
@@ -20,6 +31,9 @@ const createCar = async (req, res) => {
     }
 
     try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const userId = decoded.id;
+
         const uploadPromises = images.map(async (base64Image) => {
             const uploadResponse = await cloudinary.uploader.upload(base64Image, {
                 resource_type: 'image',
@@ -30,7 +44,7 @@ const createCar = async (req, res) => {
 
         const imageUrls = await Promise.all(uploadPromises);
 
-        const newCar = new Car({ model, price, phone, city, images: imageUrls, user });
+        const newCar = new Car({ model, price, phone, city, images: imageUrls, user: userId });
 
         await newCar.save();
 
